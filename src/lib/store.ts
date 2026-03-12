@@ -1,10 +1,5 @@
-import { create } from "zustand";
-import { MediaItem } from "./types";
-
-// Simple store using React state instead of zustand - we'll use context
-// This file exports helper hooks
-
 import { useState, useCallback } from "react";
+import { MediaItem } from "./types";
 
 export function useWatchlist() {
   const [watchlist, setWatchlist] = useState<MediaItem[]>(() => {

@@ -1,7 +1,7 @@
-import { Play, Plus, ThumbsUp, Info } from "lucide-react";
+import { Play, Plus, ThumbsUp, ChevronDown, Volume2, VolumeX } from "lucide-react";
 import { Link } from "react-router-dom";
 import { MediaItem } from "@/lib/types";
-import { motion } from "framer-motion";
+import { useState, useRef, useCallback } from "react";
 
 interface MediaCardProps {
   item: MediaItem;
@@ -10,73 +10,197 @@ interface MediaCardProps {
 }
 
 export default function MediaCard({ item, rank, showProgress }: MediaCardProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseEnter = useCallback(() => {
+    hoverTimeout.current = setTimeout(() => {
+      setIsHovered(true);
+    }, 400);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+    setIsHovered(false);
+  }, []);
+
+  // Generate a "preview" video thumbnail using the backdrop as a simulated preview
+  const previewSrc = item.backdrop;
+
   return (
-    <Link to={`/detail/${item.id}`} className="block group/card relative">
-      <motion.div
-        className="relative rounded-md overflow-hidden bg-card transition-all duration-300 group-hover/card:scale-105 group-hover/card:z-10 group-hover/card:shadow-[var(--shadow-cinematic)]"
-        whileHover={{ scale: 1.05 }}
-        transition={{ duration: 0.2 }}
-      >
-        {/* Thumbnail */}
-        <div className="relative aspect-[2/3]">
-          <img
-            src={item.thumbnail}
-            alt={item.title}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity" />
+    <div
+      className="relative group/card"
+      ref={cardRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Base card */}
+      <Link to={`/detail/${item.id}`} className="block">
+        <div className="relative rounded-md overflow-hidden bg-card">
+          <div className="relative aspect-[2/3]">
+            <img
+              src={item.thumbnail}
+              alt={item.title}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
 
-          {/* Rank */}
-          {rank !== undefined && (
-            <div className="absolute -left-1 bottom-2 text-7xl font-black text-foreground/20 leading-none select-none" style={{ WebkitTextStroke: '2px hsl(var(--foreground) / 0.4)' }}>
-              {rank}
-            </div>
-          )}
-
-          {/* Progress bar */}
-          {(showProgress || item.progress) && item.progress && (
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted">
+            {/* Rank */}
+            {rank !== undefined && (
               <div
-                className="h-full bg-primary"
-                style={{ width: `${item.progress}%` }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Hover overlay */}
-        <div className="absolute inset-0 flex flex-col justify-end p-3 opacity-0 group-hover/card:opacity-100 transition-opacity duration-200">
-          <div className="bg-card/95 backdrop-blur-sm rounded-b-md p-3 -mx-3 -mb-3">
-            <div className="flex gap-2 mb-2">
-              <Link
-                to={`/player/${item.id}`}
-                onClick={(e) => e.stopPropagation()}
-                className="w-8 h-8 rounded-full bg-foreground flex items-center justify-center hover:bg-foreground/80 transition-colors"
+                className="absolute -left-1 bottom-2 text-7xl font-black text-foreground/20 leading-none select-none"
+                style={{ WebkitTextStroke: "2px hsl(var(--foreground) / 0.4)" }}
               >
-                <Play className="w-4 h-4 text-background fill-current" />
-              </Link>
-              <button className="w-8 h-8 rounded-full border-2 border-muted-foreground/50 flex items-center justify-center hover:border-foreground transition-colors">
-                <Plus className="w-4 h-4 text-foreground" />
-              </button>
-              <button className="w-8 h-8 rounded-full border-2 border-muted-foreground/50 flex items-center justify-center hover:border-foreground transition-colors">
-                <ThumbsUp className="w-4 h-4 text-foreground" />
-              </button>
-            </div>
-            <p className="text-xs font-bold text-foreground truncate">{item.title}</p>
-            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted-foreground">
-              <span className="text-green-400 font-bold">{item.matchScore}%</span>
-              <span>{item.maturityRating}</span>
-              <span>{item.year}</span>
-            </div>
-            <div className="flex gap-1 mt-1">
-              {item.genre.slice(0, 2).map((g) => (
-                <span key={g} className="text-[10px] text-muted-foreground">{g}</span>
-              ))}
+                {rank}
+              </div>
+            )}
+
+            {/* Progress bar */}
+            {(showProgress || item.progress) && item.progress && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted">
+                <div className="h-full bg-primary" style={{ width: `${item.progress}%` }} />
+              </div>
+            )}
+          </div>
+        </div>
+      </Link>
+
+      {/* Expanded hover card — Netflix style */}
+      {isHovered && (
+        <div
+          className="absolute z-50 -top-6 -left-6 -right-6 animate-scale-in"
+          style={{ minWidth: "280px" }}
+        >
+          <div className="rounded-lg overflow-hidden bg-card shadow-[var(--shadow-cinematic)] ring-1 ring-border/20">
+            {/* Preview image/video area */}
+            <Link to={`/detail/${item.id}`} className="block relative">
+              <div className="relative aspect-video overflow-hidden">
+                {/* Animated preview — crossfade from poster to backdrop */}
+                <img
+                  src={item.thumbnail}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover animate-fade-out"
+                  style={{ animationDuration: "0.8s", animationFillMode: "forwards" }}
+                />
+                <img
+                  src={previewSrc}
+                  alt={item.title}
+                  className="w-full h-full object-cover animate-fade-in"
+                  style={{ animationDuration: "0.8s" }}
+                />
+
+                {/* Simulated video scan line effect */}
+                <div
+                  className="absolute inset-0 pointer-events-none opacity-[0.03]"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(0deg, transparent, transparent 2px, hsl(var(--foreground)) 2px, hsl(var(--foreground)) 3px)",
+                  }}
+                />
+
+                {/* Animated progress indicator to simulate video playback */}
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-muted/50">
+                  <div
+                    className="h-full bg-primary"
+                    style={{
+                      animation: "preview-progress 8s linear forwards",
+                    }}
+                  />
+                </div>
+
+                {/* Gradient overlay */}
+                <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-card to-transparent" />
+
+                {/* Title overlay */}
+                <div className="absolute bottom-3 left-3 right-12">
+                  <p className="text-sm font-bold text-foreground text-shadow-cinematic truncate">
+                    {item.title}
+                  </p>
+                </div>
+
+                {/* Mute button */}
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setMuted(!muted);
+                  }}
+                  className="absolute bottom-2 right-2 w-7 h-7 rounded-full border border-muted-foreground/40 flex items-center justify-center bg-card/60 backdrop-blur-sm hover:border-foreground transition-colors"
+                >
+                  {muted ? (
+                    <VolumeX className="w-3.5 h-3.5 text-foreground" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5 text-foreground" />
+                  )}
+                </button>
+              </div>
+            </Link>
+
+            {/* Info panel */}
+            <div className="p-3">
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 mb-3">
+                <Link
+                  to={`/player/${item.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-9 h-9 rounded-full bg-foreground flex items-center justify-center hover:bg-foreground/80 transition-all hover:scale-110"
+                >
+                  <Play className="w-4 h-4 text-background fill-current ml-0.5" />
+                </Link>
+                <button className="w-9 h-9 rounded-full border-2 border-muted-foreground/40 flex items-center justify-center hover:border-foreground hover:scale-110 transition-all bg-card/80">
+                  <Plus className="w-4 h-4 text-foreground" />
+                </button>
+                <button className="w-9 h-9 rounded-full border-2 border-muted-foreground/40 flex items-center justify-center hover:border-foreground hover:scale-110 transition-all bg-card/80">
+                  <ThumbsUp className="w-4 h-4 text-foreground" />
+                </button>
+                <div className="flex-1" />
+                <Link
+                  to={`/detail/${item.id}`}
+                  className="w-9 h-9 rounded-full border-2 border-muted-foreground/40 flex items-center justify-center hover:border-foreground hover:scale-110 transition-all bg-card/80"
+                >
+                  <ChevronDown className="w-4 h-4 text-foreground" />
+                </Link>
+              </div>
+
+              {/* Metadata */}
+              <div className="flex items-center gap-2 text-xs mb-2">
+                <span className="text-green-400 font-bold">{item.matchScore}% Match</span>
+                <span className="border border-muted-foreground/30 px-1 py-px text-[10px] text-muted-foreground rounded">
+                  {item.maturityRating}
+                </span>
+                <span className="text-muted-foreground">{item.duration}</span>
+              </div>
+
+              {/* Genre tags */}
+              <div className="flex items-center gap-1 text-[11px] text-foreground/70">
+                {item.genre.slice(0, 3).map((g, i) => (
+                  <span key={g} className="flex items-center gap-1">
+                    {i > 0 && <span className="w-1 h-1 rounded-full bg-muted-foreground/50" />}
+                    {g}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      </motion.div>
-    </Link>
+      )}
+
+      {/* Inline style for preview progress animation */}
+      <style>{`
+        @keyframes preview-progress {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+        @keyframes scale-card-in {
+          from { transform: scale(0.85); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .animate-scale-in {
+          animation: scale-card-in 0.2s ease-out forwards;
+        }
+      `}</style>
+    </div>
   );
 }

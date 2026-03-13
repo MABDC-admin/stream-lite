@@ -1,11 +1,15 @@
 import Navbar from "@/components/Navbar";
 import ContentRow from "@/components/ContentRow";
 import Footer from "@/components/Footer";
-import { trendingNow, newReleases, top10, allMedia } from "@/lib/mockData";
+import { useApiItems } from "@/hooks/useApiItems";
 import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 
 export default function NewPopularPage() {
-  const comingSoon = allMedia.slice(10, 15);
+  const { items: newest, loading: l1 } = useApiItems({ type: "Movie", limit: 20, sortBy: "DateCreated", sortOrder: "Descending" });
+  const { items: topRated } = useApiItems({ type: "Movie", limit: 20, sortBy: "CommunityRating", sortOrder: "Descending" });
+  const { items: newSeries } = useApiItems({ type: "Series", limit: 20, sortBy: "DateCreated", sortOrder: "Descending" });
+  const { items: topSeries } = useApiItems({ type: "Series", limit: 20, sortBy: "CommunityRating", sortOrder: "Descending" });
 
   return (
     <div className="min-h-screen bg-background pt-20">
@@ -19,13 +23,21 @@ export default function NewPopularPage() {
         >
           New & Popular
         </motion.h1>
-        <p className="text-muted-foreground">Discover what's trending, new, and coming soon.</p>
+        <p className="text-muted-foreground">Discover what's trending and new on the platform.</p>
       </div>
 
-      <ContentRow title="🔥 Trending Now" items={trendingNow} />
-      <ContentRow title="⭐ Top 10 Today" items={top10} isTop10 />
-      <ContentRow title="🆕 New Releases" items={newReleases} />
-      <ContentRow title="🎬 Coming Soon" items={comingSoon} />
+      {l1 ? (
+        <div className="flex justify-center py-20">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      ) : (
+        <>
+          <ContentRow title="🆕 Newest Movies" items={newest} />
+          <ContentRow title="⭐ Top Rated Movies" items={topRated} />
+          <ContentRow title="📺 New TV Shows" items={newSeries} />
+          <ContentRow title="🏆 Top Rated Shows" items={topSeries} />
+        </>
+      )}
 
       <Footer />
     </div>

@@ -1,29 +1,67 @@
-import { useParams, Link } from "react-router-dom";
-import { allMedia } from "@/lib/mockData";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import ContentRow from "@/components/ContentRow";
 import Footer from "@/components/Footer";
-import { Play, Plus, ThumbsUp, Check } from "lucide-react";
+import { Play, Plus, ThumbsUp, Check, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useWatchlist } from "@/lib/store";
+import { useState, useEffect } from "react";
+import { fetchItemDetail, getBackdropUrl } from "@/lib/api";
+import { useApiItems } from "@/hooks/useApiItems";
+import { MediaItem } from "@/lib/types";
 
 export default function DetailPage() {
   const { id } = useParams();
-  const item = allMedia.find((m) => m.id === id);
+  const navigate = useNavigate();
   const { addToWatchlist, removeFromWatchlist, isInWatchlist } = useWatchlist();
+  const [item, setItem] = useState<MediaItem | null>(null);
+  const [quality, setQuality] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // Fetch related items from same type
+  const { items: related } = useApiItems({
+    type: item?.type === "series" ? "Series" : "Movie",
+    limit: 20,
+    enabled: !!item,
+  });
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    setLoading(true);
+
+    fetchItemDetail(id).then(({ item: fetched, quality: q }) => {
+      if (cancelled) return;
+      setItem(fetched);
+      setQuality(q);
+      setLoading(false);
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Navbar />
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+      </div>
+    );
+  }
 
   if (!item) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
+        <Navbar />
         <p className="text-foreground">Content not found</p>
       </div>
     );
   }
 
   const inList = isInWatchlist(item.id);
-  const related = allMedia
-    .filter((m) => m.id !== item.id && m.genre.some((g) => item.genre.includes(g)))
-    .slice(0, 10);
+  const filteredRelated = related.filter((m) => m.id !== item.id).slice(0, 15);
 
   return (
     <div className="min-h-screen bg-background">
@@ -31,7 +69,7 @@ export default function DetailPage() {
 
       {/* Backdrop */}
       <div className="relative w-full h-[70vh] min-h-[400px]">
-        <img src={item.backdrop} alt={item.title} className="w-full h-full object-cover" />
+        <img src={getBackdropUrl(item.id)} alt={item.title} className="w-full h-full object-cover" />
         <div className="absolute inset-0 gradient-hero-bottom" />
         <div className="absolute inset-0 gradient-hero-left" />
         <div className="absolute inset-0 bg-background/20" />
@@ -51,11 +89,15 @@ export default function DetailPage() {
 
           {/* Metadata */}
           <div className="flex flex-wrap items-center gap-3 mb-4 text-sm text-muted-foreground">
-            <span className="text-green-400 font-bold text-base">{item.matchScore}% Match</span>
-            <span>{item.year}</span>
+            {item.matchScore > 0 && (
+              <span className="text-green-400 font-bold text-base">⭐ {(item.matchScore / 10).toFixed(1)}</span>
+            )}
+            {item.year > 0 && <span>{item.year}</span>}
             <span className="border border-muted-foreground/40 px-2 py-0.5 text-xs rounded">{item.maturityRating}</span>
-            <span>{item.duration}</span>
-            {item.seasons && <span>{item.seasons} Season{item.seasons > 1 && "s"}</span>}
+            {item.duration && <span>{item.duration}</span>}
+            {quality && (
+              <span className="bg-primary/20 text-primary px-2 py-0.5 text-xs rounded font-bold">{quality}</span>
+            )}
           </div>
 
           {/* Buttons */}
@@ -86,59 +128,19 @@ export default function DetailPage() {
 
           {/* Info grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 text-sm">
-            <div>
-              <span className="text-muted-foreground">Cast: </span>
-              <span className="text-foreground">{item.cast.join(", ")}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Director: </span>
-              <span className="text-foreground">{item.director}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Genres: </span>
-              <span className="text-foreground">{item.genre.join(", ")}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Tags: </span>
-              <span className="text-foreground">{item.tags.length > 0 ? item.tags.join(", ") : "None"}</span>
-            </div>
-          </div>
-
-          {/* Episodes for series */}
-          {item.type === "series" && item.episodes && (
-            <div className="mb-10">
-              <h3 className="text-xl font-bold text-foreground mb-4">Episodes</h3>
-              <div className="space-y-3">
-                {item.episodes.map((ep) => (
-                  <Link
-                    key={ep.id}
-                    to={`/player/${item.id}`}
-                    className="flex gap-4 bg-card rounded-lg p-3 hover:bg-accent transition-colors group"
-                  >
-                    <div className="relative w-32 h-20 rounded overflow-hidden flex-shrink-0">
-                      <img src={ep.thumbnail} alt={ep.title} className="w-full h-full object-cover" loading="lazy" />
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-background/40">
-                        <Play className="w-8 h-8 text-foreground fill-current" />
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start">
-                        <p className="font-semibold text-foreground text-sm">
-                          {ep.number}. {ep.title}
-                        </p>
-                        <span className="text-xs text-muted-foreground">{ep.duration}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{ep.description}</p>
-                    </div>
-                  </Link>
-                ))}
+            {item.genre.length > 0 && (
+              <div>
+                <span className="text-muted-foreground">Genres: </span>
+                <span className="text-foreground">{item.genre.join(", ")}</span>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </motion.div>
       </div>
 
-      <ContentRow title="More Like This" items={related} />
+      {filteredRelated.length > 0 && (
+        <ContentRow title="More Like This" items={filteredRelated} />
+      )}
       <Footer />
     </div>
   );

@@ -1,159 +1,193 @@
-import { useParams, Link } from "react-router-dom";
-import { allMedia } from "@/lib/mockData";
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, SkipForward, Subtitles, Settings } from "lucide-react";
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import Artplayer from "artplayer";
+import { fetchItemDetail, getStreamUrl, getBackdropUrl } from "@/lib/api";
+
+function flagFor(lang?: string) {
+  const flags: Record<string, string> = {
+    eng: "🇺🇸", spa: "🇪🇸", fra: "🇫🇷", deu: "🇩🇪", ita: "🇮🇹",
+    por: "🇧🇷", nld: "🇳🇱", dan: "🇩🇰", fin: "🇫🇮", nor: "🇳🇴",
+    swe: "🇸🇪", ara: "🇸🇦", jpn: "🇯🇵", kor: "🇰🇷", zho: "🇨🇳",
+    hin: "🇮🇳", tha: "🇹🇭", rus: "🇷🇺", pol: "🇵🇱", tur: "🇹🇷",
+  };
+  return flags[lang || ""] || "🌐";
+}
 
 export default function PlayerPage() {
   const { id } = useParams();
-  const item = allMedia.find((m) => m.id === id);
-  const [playing, setPlaying] = useState(true);
-  const [muted, setMuted] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [showControls, setShowControls] = useState(true);
-  const [showNextEp, setShowNextEp] = useState(false);
+  const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const artRef = useRef<Artplayer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!playing) return;
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 95) {
-          setShowNextEp(true);
-          return p;
+    if (!id || !containerRef.current) return;
+
+    let destroyed = false;
+
+    async function init() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { item, subtitles, quality } = await fetchItemDetail(id!);
+        if (destroyed) return;
+
+        setTitle(item.title);
+
+        const videoUrl = getStreamUrl(id!);
+        const posterUrl = getBackdropUrl(id!, 1280);
+
+        // Find English subtitle, prefer forced English, then default English, then first English, then any default
+        const engSub =
+          subtitles.find((s) => s.language === "eng" && s.isForced) ||
+          subtitles.find((s) => s.language === "eng" && s.isDefault) ||
+          subtitles.find((s) => s.language === "eng") ||
+          subtitles.find((s) => s.isDefault) ||
+          subtitles[0];
+
+        // Build subtitle settings
+        const subtitleSettings: any[] = [];
+        if (subtitles.length > 0) {
+          subtitleSettings.push({
+            html: "💬 Subtitles",
+            selector: [
+              { html: "Off", url: "" },
+              ...subtitles.map((s) => ({
+                html: `${flagFor(s.language)} ${s.displayTitle}`,
+                url: s.url,
+                default: engSub?.index === s.index,
+              })),
+            ],
+            onSelect(selected: any) {
+              if (!selected.url) {
+                artRef.current!.subtitle.show = false;
+              } else {
+                artRef.current!.subtitle.switch(selected.url, { type: "vtt", escape: false });
+                artRef.current!.subtitle.show = true;
+              }
+              return selected.html;
+            },
+          });
         }
-        return p + 0.5;
-      });
-    }, 500);
-    return () => clearInterval(interval);
-  }, [playing]);
 
-  useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    const reset = () => {
-      setShowControls(true);
-      clearTimeout(timeout);
-      timeout = setTimeout(() => setShowControls(false), 3000);
-    };
-    window.addEventListener("mousemove", reset);
-    reset();
+        const art = new Artplayer({
+          container: containerRef.current!,
+          url: videoUrl,
+          poster: posterUrl,
+          volume: 1,
+          muted: false,
+          autoplay: true,
+          pip: true,
+          screenshot: true,
+          setting: true,
+          playbackRate: true,
+          aspectRatio: true,
+          fullscreen: true,
+          fullscreenWeb: true,
+          miniProgressBar: true,
+          mutex: true,
+          backdrop: true,
+          playsInline: true,
+          autoPlayback: true,
+          airplay: true,
+          theme: "hsl(0, 72%, 51%)",
+          hotkey: true,
+          autoOrientation: true,
+          lock: true,
+          subtitle: engSub
+            ? {
+                url: engSub.url,
+                type: "vtt",
+                encoding: "utf-8",
+                escape: false,
+                style: {
+                  color: "#fff",
+                  fontSize: "22px",
+                  textShadow: "0 2px 4px rgba(0,0,0,0.9)",
+                  fontFamily: "'Be Vietnam Pro', system-ui, sans-serif",
+                },
+              }
+            : {},
+          settings: subtitleSettings,
+        });
+
+        artRef.current = art;
+
+        // Force unmute and full volume
+        art.on("ready", () => {
+          art.muted = false;
+          art.volume = 1;
+        });
+
+        setLoading(false);
+      } catch (e: any) {
+        if (!destroyed) {
+          setError(e.message || "Failed to load");
+          setLoading(false);
+        }
+      }
+    }
+
+    init();
+
     return () => {
-      window.removeEventListener("mousemove", reset);
-      clearTimeout(timeout);
+      destroyed = true;
+      if (artRef.current) {
+        try { artRef.current.destroy(true); } catch {}
+        artRef.current = null;
+      }
     };
-  }, []);
-
-  if (!item) return null;
-
-  const formatTime = (pct: number) => {
-    const total = 120; // 2h in minutes
-    const elapsed = Math.floor((pct / 100) * total);
-    const h = Math.floor(elapsed / 60);
-    const m = elapsed % 60;
-    return `${h}:${m.toString().padStart(2, "0")}`;
-  };
+  }, [id]);
 
   return (
-    <div className="relative w-full h-screen bg-background cursor-none overflow-hidden" style={{ cursor: showControls ? 'auto' : 'none' }}>
-      {/* Video placeholder */}
-      <div className="absolute inset-0">
-        <img src={item.backdrop} alt={item.title} className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-background/30" />
+    <div className="relative w-full h-screen bg-background overflow-hidden">
+      {/* Back button overlay */}
+      <div className="absolute top-0 left-0 right-0 z-20 p-4 md:p-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-3 text-foreground hover:text-primary transition-colors"
+        >
+          <ArrowLeft className="w-6 h-6" />
+          <span className="text-sm md:text-base font-medium">{title}</span>
+        </button>
       </div>
 
-      {/* Controls overlay */}
-      <AnimatePresence>
-        {showControls && (
-          <motion.div
-            className="absolute inset-0 z-10"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            {/* Top bar */}
-            <div className="absolute top-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-b from-background/80 to-transparent">
-              <Link to={`/detail/${item.id}`} className="flex items-center gap-3 text-foreground">
-                <ArrowLeft className="w-6 h-6" />
-                <span className="text-sm md:text-base font-medium">
-                  {item.title}
-                  {item.type === "series" && " — S1:E1"}
-                </span>
-              </Link>
-            </div>
+      {/* Loading state */}
+      {loading && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+            <p className="text-muted-foreground text-sm">Loading stream...</p>
+          </div>
+        </div>
+      )}
 
-            {/* Center play/pause */}
+      {/* Error state */}
+      {error && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
+          <div className="flex flex-col items-center gap-4 text-center px-4">
+            <p className="text-foreground text-lg font-bold">Playback Error</p>
+            <p className="text-muted-foreground text-sm max-w-md">{error}</p>
             <button
-              onClick={() => setPlaying(!playing)}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 md:w-20 md:h-20 rounded-full bg-foreground/20 backdrop-blur-sm flex items-center justify-center hover:bg-foreground/30 transition-colors"
+              onClick={() => navigate(-1)}
+              className="bg-primary text-primary-foreground px-6 py-2 rounded-md font-semibold hover:bg-primary/80 transition-colors"
             >
-              {playing ? (
-                <Pause className="w-8 h-8 md:w-10 md:h-10 text-foreground" />
-              ) : (
-                <Play className="w-8 h-8 md:w-10 md:h-10 text-foreground fill-current ml-1" />
-              )}
+              Go Back
             </button>
+          </div>
+        </div>
+      )}
 
-            {/* Bottom controls */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-background/80 to-transparent">
-              {/* Progress bar */}
-              <div className="relative w-full h-1 bg-muted rounded-full mb-4 group cursor-pointer">
-                <div className="h-full bg-primary rounded-full relative" style={{ width: `${progress}%` }}>
-                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <button onClick={() => setPlaying(!playing)} className="text-foreground hover:text-primary transition-colors">
-                    {playing ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 fill-current" />}
-                  </button>
-                  <button className="text-foreground hover:text-primary transition-colors">
-                    <SkipForward className="w-6 h-6" />
-                  </button>
-                  <button onClick={() => setMuted(!muted)} className="text-foreground hover:text-primary transition-colors">
-                    {muted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
-                  </button>
-                  <span className="text-sm text-muted-foreground">
-                    {formatTime(progress)} / 2:00:00
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <button className="text-foreground hover:text-primary transition-colors">
-                    <Subtitles className="w-5 h-5" />
-                  </button>
-                  <button className="text-foreground hover:text-primary transition-colors">
-                    <Settings className="w-5 h-5" />
-                  </button>
-                  <button className="text-foreground hover:text-primary transition-colors">
-                    <Maximize className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Next episode prompt */}
-      <AnimatePresence>
-        {showNextEp && (
-          <motion.div
-            className="absolute bottom-24 right-6 z-20"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-          >
-            <div className="bg-card/90 backdrop-blur-md rounded-lg p-4 border border-border">
-              <p className="text-xs text-muted-foreground mb-1">Next Episode</p>
-              <p className="text-sm font-bold text-foreground mb-2">Episode 2</p>
-              <button className="bg-foreground text-background px-4 py-2 rounded-md text-sm font-semibold hover:bg-foreground/80 transition-colors">
-                Play Next
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ArtPlayer container */}
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        style={{ aspectRatio: "unset" }}
+      />
     </div>
   );
 }

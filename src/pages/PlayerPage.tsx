@@ -77,7 +77,6 @@ export default function PlayerPage() {
         const art = new Artplayer({
           container: containerRef.current!,
           url: videoUrl,
-          title: item.title,
           poster: posterUrl,
           volume: 1,
           muted: false,

@@ -2,6 +2,7 @@ import { Play, Plus, ThumbsUp, ChevronDown, Volume2, VolumeX } from "lucide-reac
 import { Link } from "react-router-dom";
 import { MediaItem } from "@/lib/types";
 import { useState, useRef, useCallback } from "react";
+import { getPosterUrl, getBackdropUrl } from "@/lib/api";
 
 interface MediaCardProps {
   item: MediaItem;
@@ -12,6 +13,7 @@ interface MediaCardProps {
 export default function MediaCard({ item, rank, showProgress }: MediaCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [muted, setMuted] = useState(true);
+  const [imgError, setImgError] = useState(false);
   const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -26,8 +28,9 @@ export default function MediaCard({ item, rank, showProgress }: MediaCardProps) 
     setIsHovered(false);
   }, []);
 
-  // Generate a "preview" video thumbnail using the backdrop as a simulated preview
-  const previewSrc = item.backdrop;
+  // Use API image URLs
+  const posterSrc = item.thumbnail || getPosterUrl(item.id);
+  const backdropSrc = item.backdrop || getBackdropUrl(item.id);
 
   return (
     <div
@@ -40,12 +43,19 @@ export default function MediaCard({ item, rank, showProgress }: MediaCardProps) 
       <Link to={`/detail/${item.id}`} className="block">
         <div className="relative rounded-md overflow-hidden bg-card">
           <div className="relative aspect-[2/3]">
-            <img
-              src={item.thumbnail}
-              alt={item.title}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
+            {!imgError ? (
+              <img
+                src={posterSrc}
+                alt={item.title}
+                className="w-full h-full object-cover"
+                loading="lazy"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-muted">
+                <span className="text-3xl">🎬</span>
+              </div>
+            )}
 
             {/* Rank */}
             {rank !== undefined && (
@@ -54,6 +64,15 @@ export default function MediaCard({ item, rank, showProgress }: MediaCardProps) 
                 style={{ WebkitTextStroke: "2px hsl(var(--foreground) / 0.4)" }}
               >
                 {rank}
+              </div>
+            )}
+
+            {/* Tags */}
+            {item.tags.length > 0 && (
+              <div className="absolute top-2 right-2">
+                <span className="bg-primary/80 text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded">
+                  {item.tags[0]}
+                </span>
               </div>
             )}
 
@@ -74,24 +93,22 @@ export default function MediaCard({ item, rank, showProgress }: MediaCardProps) 
           style={{ minWidth: "280px" }}
         >
           <div className="rounded-lg overflow-hidden bg-card shadow-[var(--shadow-cinematic)] ring-1 ring-border/20">
-            {/* Preview image/video area */}
+            {/* Preview image area */}
             <Link to={`/detail/${item.id}`} className="block relative">
               <div className="relative aspect-video overflow-hidden">
-                {/* Animated preview — crossfade from poster to backdrop */}
                 <img
-                  src={item.thumbnail}
+                  src={posterSrc}
                   alt=""
                   className="absolute inset-0 w-full h-full object-cover animate-fade-out"
                   style={{ animationDuration: "0.8s", animationFillMode: "forwards" }}
                 />
                 <img
-                  src={previewSrc}
+                  src={backdropSrc}
                   alt={item.title}
                   className="w-full h-full object-cover animate-fade-in"
                   style={{ animationDuration: "0.8s" }}
                 />
 
-                {/* Simulated video scan line effect */}
                 <div
                   className="absolute inset-0 pointer-events-none opacity-[0.03]"
                   style={{
@@ -100,27 +117,21 @@ export default function MediaCard({ item, rank, showProgress }: MediaCardProps) 
                   }}
                 />
 
-                {/* Animated progress indicator to simulate video playback */}
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-muted/50">
                   <div
                     className="h-full bg-primary"
-                    style={{
-                      animation: "preview-progress 8s linear forwards",
-                    }}
+                    style={{ animation: "preview-progress 8s linear forwards" }}
                   />
                 </div>
 
-                {/* Gradient overlay */}
                 <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-card to-transparent" />
 
-                {/* Title overlay */}
                 <div className="absolute bottom-3 left-3 right-12">
                   <p className="text-sm font-bold text-foreground text-shadow-cinematic truncate">
                     {item.title}
                   </p>
                 </div>
 
-                {/* Mute button */}
                 <button
                   onClick={(e) => {
                     e.preventDefault();
@@ -140,7 +151,6 @@ export default function MediaCard({ item, rank, showProgress }: MediaCardProps) 
 
             {/* Info panel */}
             <div className="p-3">
-              {/* Action buttons */}
               <div className="flex items-center gap-2 mb-3">
                 <Link
                   to={`/player/${item.id}`}
@@ -164,16 +174,16 @@ export default function MediaCard({ item, rank, showProgress }: MediaCardProps) 
                 </Link>
               </div>
 
-              {/* Metadata */}
               <div className="flex items-center gap-2 text-xs mb-2">
-                <span className="text-green-400 font-bold">{item.matchScore}% Match</span>
+                {item.matchScore > 0 && (
+                  <span className="text-green-400 font-bold">⭐ {(item.matchScore / 10).toFixed(1)}</span>
+                )}
                 <span className="border border-muted-foreground/30 px-1 py-px text-[10px] text-muted-foreground rounded">
                   {item.maturityRating}
                 </span>
-                <span className="text-muted-foreground">{item.duration}</span>
+                {item.duration && <span className="text-muted-foreground">{item.duration}</span>}
               </div>
 
-              {/* Genre tags */}
               <div className="flex items-center gap-1 text-[11px] text-foreground/70">
                 {item.genre.slice(0, 3).map((g, i) => (
                   <span key={g} className="flex items-center gap-1">
@@ -187,7 +197,6 @@ export default function MediaCard({ item, rank, showProgress }: MediaCardProps) 
         </div>
       )}
 
-      {/* Inline style for preview progress animation */}
       <style>{`
         @keyframes preview-progress {
           from { width: 0%; }

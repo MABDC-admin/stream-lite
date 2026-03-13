@@ -157,7 +157,17 @@ export async function fetchItemDetail(itemId: string): Promise<{
   raw: JellyfinItem;
 }> {
   const res = await fetch(`${BASE}/Items/${itemId}?Fields=MediaStreams,Genres,Overview,ProductionYear,CommunityRating,OfficialRating,MediaSources&api_key=${TOKEN}`);
-  const data: JellyfinItem = await res.json();
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "Unknown error");
+    throw new Error(`API error ${res.status}: ${errText}`);
+  }
+  const text = await res.text();
+  let data: JellyfinItem;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid JSON from API: ${text.slice(0, 100)}`);
+  }
 
   const streams = data.MediaSources?.[0]?.MediaStreams || [];
   const quality = getQuality(streams);
